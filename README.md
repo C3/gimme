@@ -8,7 +8,7 @@ Because I get it wrong every time.
 
 Install the gem, maybe like:
 
-`wget https://github.com/an0nym0use/gimme/raw/master/gimme`
+`wget https://raw.githubusercontent.com/an0nym0use/gimme/master/gimme`
 
 Then run like:
 
