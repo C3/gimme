@@ -1,0 +1,95 @@
+#!/usr/bin/env ruby
+
+require 'erb'
+require 'optparse'
+require 'fileutils'
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: gimme [options]"
+
+  opts.on(      '-r', '--ram',      'Amount of RAM in MB',  :REQUIRED, String) { |r| options[:ram] = r        }
+  opts.on(      '-d', '--disk',     'Size of disk in GB',   :REQUIRED, String) { |d| options[:disk] = d       }
+  opts.on(      '-c', '--vcpus',    'Number of vcpus',      :REQUIRED, String) { |c| options[:vcpus] = c      }
+  opts.on(      '-i', '--ip',       'IP address',           :REQUIRED, String) { |i| options[:ipaddr] = i     }
+  opts.on(      '-g', '--gw',       'Gateway IP address',   :REQUIRED, String) { |g| options[:gwaddr] = g     }
+  opts.on(      '-n', '--hostname', 'Name of machine',      :REQUIRED, String) { |n| options[:hostname] = n   }
+  opts.on_tail( '-h', '--help',     'Show this message')                       {     puts opts; exit          }
+end.parse!
+
+raise OptionParser::MissingArgument unless options.keys.sort == [:gwaddr, :ram, :disk, :vcpus, :ipaddr, :hostname].sort
+
+preseed_template = <<-TEMPLATE
+## Preseed conf file for <%= options[:hostname] %>
+
+## Language, country, locale
+d-i debian-installer/locale string en_AU
+
+## Keyboard selection
+d-i console-setup/ask_detect boolean false
+d-i keyboard-configuration/layoutcode string us
+
+## Network configuration
+d-i netcfg/choose_interface select eth0
+d-i netcfg/disable_autoconfig boolean true
+
+d-i netcfg/dhcp_failed note
+d-i netcfg/dhcp_options select Configure network manually
+
+d-i netcfg/get_nameservers string <%= options[:gwaddr] %>
+d-i netcfg/get_ipaddress string <%= options[:ipaddr] %>
+d-i netcfg/get_netmask string 255.255.0.0
+d-i netcfg/get_gateway string <%= options[:gwaddr] %>
+d-i netcfg/confirm_static boolean true
+
+## Host and domain names
+d-i netcfg/get_hostname string <%= options[:hostname] %>
+d-i netcfg/get_domain string
+d-i netcfg/wireless_wep string
+
+## Ubuntu mirror
+d-i mirror/http/mirror select au.archive.ubuntu.com
+
+## Clock settings
+d-i clock-setup/utc boolean true
+d-i time/zone string Australia/Melbourne
+
+## Hardware settings
+d-i partman-auto/method string lvm
+d-i partman-lvm/confirm boolean true
+d-i partman-lvm/confirm_nooverwrite boolean true
+d-i partman-partitioning/confirm_write_new_label boolean true
+d-i partman/choose_partition select finish
+d-i partman/confirm boolean true
+d-i partman/confirm_nooverwrite boolean true
+
+## Accounts
+d-i passwd/user-fullname string user
+d-i passwd/username string user
+d-i passwd/user-password password password
+d-i passwd/user-password-again password password
+d-i user-setup/allow-password-weak boolean true
+d-i user-setup/encrypt-home boolean false
+
+## Package management
+d-i pkgsel/include string openssh-server build-essential
+d-i pkgsel/update-policy select unattended-upgrades
+
+## GRUB installation
+d-i grub-installer/only_debian boolean true
+
+## Skip installation complete message
+d-i finish-install/reboot_in_progress note
+TEMPLATE
+
+preseed_file = ERB.new preseed_template
+preseed_path = "/var/lib/libvirt/images/#{options[:hostname]}"
+FileUtils::mkdir_p preseed_path
+File.open(File.join(preseed_path, 'preseed.cfg'), 'w') {|f| f.write preseed_file.result}
+
+command = "virt-install --name=#{options[:hostname]} --ram=#{options[:ram]} --disk=#{preseed_path}.img,size=#{options[:disk]} --vcpus=#{options[:vcpus]} --location=http://ftp.ubuntu.com/ubuntu/dists/precise-updates/main/installer-amd64 --extra-args=\"auto=true priority=critical\" --initrd-inject=#{File.join preseed_path, 'preseed.cfg'} --bridge=br0"
+
+system command
+
+p 'Fin.'
+
