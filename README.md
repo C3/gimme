@@ -6,7 +6,7 @@ Because I get it wrong every time.
 
 ## Use
 
-Install the gem, maybe like:
+Get the script, maybe like:
 
 `wget https://raw.githubusercontent.com/an0nym0use/gimme/master/gimme`
 
